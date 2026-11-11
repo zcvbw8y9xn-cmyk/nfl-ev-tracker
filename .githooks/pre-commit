@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# Pre-commit hook: block commits that would reintroduce a parser/engine regression
+# (phantom EV, orphan market/team, EV math mismatch, NaN/inf, duplicate rows).
+#
+# It validates the *current cached dataset* (produced by the last `main.py` run) and,
+# when Python files are staged, also byte-compiles them. If the dataset is stale you
+# may want to run `python3 main.py --dry-run` first; the hook does NOT scrape.
+#
+# Install: git config core.hooksPath .githooks   (see tools/install-hooks.sh)
+set -euo pipefail
+
+cd "$(git rev-parse --show-toplevel 2>/dev/null || echo .)"
+PY="${PYTHON:-python3}"
+
+# 1. Byte-compile everything that is staged & changed (fast syntax guard).
+py_changed="$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.py$' || true)"
+if [[ -n "$py_changed" ]]; then
+  echo ">>> pre-commit: byte-compiling changed .py file(s)..."
+  # shellcheck disable=SC2086
+  if ! "$PY" -m py_compile $py_changed; then
+    echo "REGRESSION: staged Python files do not compile." >&2
+    exit 1
+  fi
+fi
+
+# 2. Dataset integrity check (phantom EV / orphan / EV mismatch / NaN / dupes).
+echo ">>> pre-commit: validating dataset integrity..."
+if ! "$PY" tools/validate_dataset.py; then
+  echo "REGRESSION: dataset integrity check failed (phantom EV / orphan market /" >&2
+  echo "EV math mismatch). Fix the parser/engine before committing." >&2
+  echo "Tip: run 'python3 main.py --dry-run' then inspect, or 'git commit --no-verify' to bypass." >&2
+  exit 1
+fi
+
+echo ">>> pre-commit OK."
