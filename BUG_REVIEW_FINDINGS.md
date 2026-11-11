@@ -359,5 +359,15 @@ CI / PRE-COMMIT GATES ADDED
                                 failing unit test, or dataset regression (phantom EV /
                                 orphan / EV mismatch / NaN / dupes). Fresh checkouts
                                 with no dataset SKIP the integrity step (--allow-missing).
+
+REQUIREMENTS FIX (found by CI on first run)
+-----------------------------------------
+ - requirements.txt pinned `scrapling[fetchers]>=0.2.99`. Plain `pip install
+   scrapling` omits the optional `fetchers` extra, so `curl_cffi` is not installed
+   and `from scrapling.fetchers import Fetcher` raises ModuleNotFoundError. This broke
+   3 tests on a clean CI runner and would break the app on any fresh machine.
+   Verified in a clean venv: install succeeds, curl_cffi present, 24/24 tests pass.
+ - CI (GitHub Actions, Python 3.11 & 3.12) is GREEN after the fix.
+ - Repo published (private) with .env excluded via .gitignore; .env.example committed.
  All verified: fault-injected phantom-EV and orphan-market both return exit 1 /
  block the commit; clean data passes. Tested on macOS bash 3.2 (mapfile removed).
