@@ -59,6 +59,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKUI
         mainMenu.addItem(winMenuItem)
         let winMenu = NSMenu(title: "Window")
         winMenu.addItem(withTitle: "Minimize", action: #selector(NSWindow.miniaturize(_:)), keyEquivalent: "m")
+        winMenu.addItem(withTitle: "Zoom / Maximize", action: #selector(NSWindow.performZoom(_:)), keyEquivalent: "")
         winMenu.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
         winMenuItem.submenu = winMenu
 
@@ -67,9 +68,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKUI
 
     private func buildWindow() {
         let screenFrame = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
-        let initW = min(1420, max(960, screenFrame.width * 0.88))
-        let initH = min(880, max(640, screenFrame.height * 0.88))
-        let frame = NSRect(x: 0, y: 0, width: initW, height: initH)
+        let frame = screenFrame
         window = NSWindow(
             contentRect: frame,
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
@@ -83,8 +82,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKUI
         window.titlebarAppearsTransparent = true
         window.minSize = NSSize(width: 680, height: 500)
         window.collectionBehavior = [.fullScreenPrimary]
-        window.center()
-        window.setFrameAutosaveName("NFLEVTrackerMainWindow")
+        window.setFrame(screenFrame, display: true)
 
         let config = WKWebViewConfiguration()
         config.preferences.setValue(true, forKey: "developerExtrasEnabled")
@@ -115,6 +113,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKUI
         webView.loadHTMLString(splash, baseURL: nil)
 
         window.contentView = container
+        window.setFrame(screenFrame, display: true)
         window.makeKeyAndOrderFront(nil)
     }
 

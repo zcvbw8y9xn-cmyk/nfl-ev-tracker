@@ -5,18 +5,15 @@ from typing import Dict, List
 from scrapling.fetchers import Fetcher
 
 from ..normalize import normalize_market, normalize_team
-from ..odds_math import decimal_to_american
 from .cache_utils import RateLimitError, fetch_with_cache
 
 PRIZEPICKS_URL = "https://partner-api.prizepicks.com/projections?league_id=9&per_page=250"
 
-# Standard 5/6-Pick Flex optimal break-even probability (~54.25% => ~-118.6 / 1.8433 decimal)
-PP_STANDARD_PROB = 0.5425
-PP_STANDARD_DEC = round(1.0 / PP_STANDARD_PROB, 4)
-PP_STANDARD_AM = decimal_to_american(PP_STANDARD_DEC)
+# PrizePicks payout depends on entry size/type; individual lines have no
+# defensible single-leg American price or EV.
 
 
-def scrape_prizepicks(include_alt_types: bool = False) -> List[Dict]:
+def scrape_prizepicks(include_alt_types: bool = True) -> List[Dict]:
     """Fetch PrizePicks NFL lines with a 10-minute cache & 30-minute 403/429 cooldown fallback."""
     res = fetch_with_cache(
         f"prizepicks_alt{int(include_alt_types)}",
@@ -29,7 +26,7 @@ def scrape_prizepicks(include_alt_types: bool = False) -> List[Dict]:
     return res if isinstance(res, list) else []
 
 
-def _scrape_prizepicks_live(include_alt_types: bool = False) -> List[Dict]:
+def _scrape_prizepicks_live(include_alt_types: bool = True) -> List[Dict]:
     """Fetch PrizePicks NFL lines (standard + Taco/flash-sale promos) from partner API."""
     resp = Fetcher.get(PRIZEPICKS_URL, timeout=20)
     if getattr(resp, "status", 200) in (403, 429):
@@ -54,8 +51,9 @@ def _scrape_prizepicks_live(include_alt_types: bool = False) -> List[Dict]:
             continue
 
         odds_type = (attrs.get("odds_type") or "standard").lower()
-        if not include_alt_types and odds_type != "standard":
+        if odds_type != "standard" and not (include_alt_types and odds_type == "goblin"):
             continue
+        is_goblin = odds_type == "goblin"
 
         rels = item.get("relationships") or {}
         dur_id = (rels.get("duration") or {}).get("data", {}).get("id")
@@ -117,13 +115,16 @@ def _scrape_prizepicks_live(include_alt_types: bool = False) -> List[Dict]:
                 "market": market,
                 "side": side,
                 "line": active_line,
-                "american": PP_STANDARD_AM,
-                "decimal": PP_STANDARD_DEC,
-                "payout_multiplier": 1.0,
+                "american": None,
+                "decimal": None,
+                "payout_multiplier": None,
+                "no_single_leg_odds": True,
                 "odds_type": odds_type,
-                "is_promo": is_promo,
-                "promo_label": f"{promo_label} (-{attrs.get('discount_percentage', '')}%)" if is_promo else "",
-                "orig_line": base_line if is_promo else None,
+                "is_goblin": is_goblin,
+                "adjusted_payout": is_goblin,
+                "is_promo": is_promo and not is_goblin,
+                "promo_label": f"{promo_label} (-{attrs.get('discount_percentage', '')}%)" if is_promo and not is_goblin else "",
+                "orig_line": base_line if is_promo and not is_goblin else None,
             })
 
     return rows

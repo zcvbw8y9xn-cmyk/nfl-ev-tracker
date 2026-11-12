@@ -236,13 +236,23 @@ def compute_ev_pct(fair_prob: float, offered_dec: float) -> float:
 
 def kelly_fraction(fair_prob: float, offered_dec: float, multiplier: float = 0.25) -> float:
     """Fractional Kelly stake percentage of bankroll (default Quarter Kelly = 0.25).
-    Returns percentage (e.g., 1.85 means 1.85% of bankroll).
+    Returns percentage (e.g., 1.85 means 1.85% of bankroll). The multiplier is
+    constrained to [0, 1], so this helper never recommends more than full Kelly.
     """
+    try:
+        fair_prob = float(fair_prob)
+        offered_dec = float(offered_dec)
+        multiplier = float(multiplier)
+    except (TypeError, ValueError):
+        return 0.0
+    if not all(math.isfinite(x) for x in (fair_prob, offered_dec, multiplier)):
+        return 0.0
     if fair_prob <= 0 or fair_prob >= 1 or offered_dec <= 1.0:
         return 0.0
+    multiplier = min(max(multiplier, 0.0), 1.0)
     b = offered_dec - 1.0
     q = 1.0 - fair_prob
     full_kelly = ((b * fair_prob) - q) / b
-    if full_kelly <= 0:
+    if full_kelly <= 0 or multiplier == 0:
         return 0.0
     return full_kelly * multiplier * 100.0

@@ -109,8 +109,8 @@ def export_to_google_sheets(
         rownum = idx + 1
         # Formula: Full Kelly = EV / (Dec - 1); Stake = Bankroll * KellyMult * FullKelly
         kelly_formula = (
-            f"=IF(AND(ISNUMBER(J{rownum}),ISNUMBER(M{rownum}),J{rownum}>1,M{rownum}>0),"
-            f"ROUND(((M{rownum}/100)/(J{rownum}-1))*'Dashboard & Config'!$C$5*'Dashboard & Config'!$C$6,2),0)"
+            f"=IF(AND(ISNUMBER(J{rownum}),ISNUMBER(M{rownum}),J{rownum}>1,M{rownum}>0,'Dashboard & Config'!$C$5>0),"
+            f"ROUND(((M{rownum}/100)/(J{rownum}-1))*'Dashboard & Config'!$C$5*MIN(1,MAX(0,'Dashboard & Config'!$C$6)),2),0)"
         )
         dfs_ref = r.get("dfs_lines") or {}
         prop_rows_data.append([
@@ -206,8 +206,8 @@ def export_to_google_sheets(
     for idx, r in enumerate(dataset.get("game_ev_rows", [])[:300], start=1):
         rownum = idx + 1
         kelly_formula = (
-            f"=IF(AND(ISNUMBER(G{rownum}),ISNUMBER(J{rownum}),G{rownum}>1,J{rownum}>0),"
-            f"ROUND(((J{rownum}/100)/(G{rownum}-1))*'Dashboard & Config'!$C$5*'Dashboard & Config'!$C$6,2),0)"
+            f"=IF(AND(ISNUMBER(G{rownum}),ISNUMBER(J{rownum}),G{rownum}>1,J{rownum}>0,'Dashboard & Config'!$C$5>0),"
+            f"ROUND(((J{rownum}/100)/(G{rownum}-1))*'Dashboard & Config'!$C$5*MIN(1,MAX(0,'Dashboard & Config'!$C$6)),2),0)"
         )
         game_rows_data.append([
             r["kickoff_nl"],
@@ -308,11 +308,11 @@ def export_to_google_sheets(
     for rnum in range(2, 52):
         betlog_rows_data.append([
             "", "", "", "", "", "",
-            f'=IF(ISBLANK(F{rnum}),"",IF(F{rnum}>0,1+F{rnum}/100,1+100/ABS(F{rnum})))',
-            "", "", "Pending" if rnum == 2 else "",
+            f'=IF(OR(ISBLANK(F{rnum}),F{rnum}=0),"",IF(F{rnum}>0,1+F{rnum}/100,1+100/ABS(F{rnum})))',
+            "", "", "",
             f'=IF(OR(ISBLANK(G{rnum}),ISBLANK(I{rnum})),"",ROUND(I{rnum}*(G{rnum}-1),2))',
             f'=IF(J{rnum}="Win",K{rnum},IF(J{rnum}="Loss",-I{rnum},IF(J{rnum}="Push",0,"")))',
-            f'=IF(OR(ISBLANK(G{rnum}),ISBLANK(H{rnum})),"",ROUND((G{rnum}/(IF(H{rnum}>0,1+H{rnum}/100,1+100/ABS(H{rnum})))-1)*100,2))',
+            f'=IF(OR(ISBLANK(G{rnum}),ISBLANK(H{rnum}),H{rnum}=0),"",ROUND((G{rnum}/(IF(H{rnum}>0,1+H{rnum}/100,1+100/ABS(H{rnum})))-1)*100,2))',
             "",
         ])
 

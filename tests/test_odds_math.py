@@ -110,6 +110,16 @@ class TestEVAndKelly(unittest.TestCase):
     def test_kelly_quarter(self):
         self.assertTrue(approx(kelly_fraction(0.55, 2.20), 0.175 * 25))
 
+    def test_kelly_multiplier_is_bounded_to_zero_and_full_kelly(self):
+        full = kelly_fraction(0.55, 2.20, 1.0)
+        self.assertTrue(approx(kelly_fraction(0.55, 2.20, 2.0), full))
+        self.assertEqual(kelly_fraction(0.55, 2.20, -0.5), 0.0)
+
+    def test_kelly_non_finite_inputs_are_zero(self):
+        self.assertEqual(kelly_fraction(float("nan"), 2.20), 0.0)
+        self.assertEqual(kelly_fraction(0.55, float("inf")), 0.0)
+        self.assertEqual(kelly_fraction(0.55, 2.20, float("nan")), 0.0)
+
     def test_kelly_no_edge_is_zero(self):
         self.assertEqual(kelly_fraction(0.4, american_to_decimal(-110)), 0.0)
 
@@ -207,6 +217,83 @@ class TestEngineSort(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TestPrizePicksGoblinHandling(unittest.TestCase):
+    def test_scraper_includes_goblins_without_conventional_prices(self):
+        from unittest.mock import patch
+        import src.sources.prizepicks as P
+
+        def projection(kind, line):
+            return {
+                "attributes": {"odds_type": kind, "line_score": line, "allowed_wager_types": "under_or_over"},
+                "relationships": {
+                    "duration": {"data": {"id": "full"}},
+                    "new_player": {"data": {"id": "p1"}},
+                    "stat_type": {"data": {"id": "yards"}},
+                    "game": {"data": {"id": "g1"}},
+                },
+            }
+
+        payload = {
+            "data": [projection("standard", 25.5), projection("goblin", 23.5), projection("demon", 30.5)],
+            "included": [
+                {"type": "duration", "id": "full", "attributes": {"name": "Full"}},
+                {"type": "new_player", "id": "p1", "attributes": {"display_name": "Test Player"}},
+                {"type": "stat_type", "id": "yards", "attributes": {"name": "Rushing Yards"}},
+                {"type": "game", "id": "g1", "attributes": {"metadata": {"game_info": {"teams": {}}}}},
+            ],
+        }
+
+        class Response:
+            status = 200
+            def json(self):
+                return payload
+
+        with patch.object(P.Fetcher, "get", return_value=Response()):
+            rows = P._scrape_prizepicks_live()
+        self.assertEqual({r["odds_type"] for r in rows}, {"standard", "goblin"})
+        self.assertEqual(len(rows), 4)
+        self.assertTrue(all(r["no_single_leg_odds"] for r in rows))
+        self.assertTrue(all(r["american"] is None and r["decimal"] is None for r in rows))
+        goblins = [r for r in rows if r["is_goblin"]]
+        self.assertEqual(len(goblins), 2)
+        self.assertTrue(all(r["adjusted_payout"] and not r["is_promo"] for r in goblins))
+
+    @staticmethod
+    def _row(line, odds_type="standard", legacy_odds=True):
+        return {
+            "source": "PrizePicks", "book": "PrizePicks", "player": "Test Player",
+            "matchup": "", "market": "Rushing Yards", "side": "Over", "line": line,
+            "american": -119 if legacy_odds else None,
+            "decimal": 1.8433 if legacy_odds else None,
+            "odds_type": odds_type, "is_goblin": odds_type == "goblin",
+            "adjusted_payout": odds_type == "goblin",
+            "no_single_leg_odds": True,
+        }
+
+    def test_prizepicks_standard_and_goblin_never_get_single_leg_odds_or_ev(self):
+        ds = build_ev_datasets(
+            espn_games=[], alc_data={}, pinnacle_data={}, action_data={}, bp_props=[],
+            covers_data={}, sao_props=[], odds_api_data={},
+            prizepicks_props=[self._row(25.5), self._row(23.5, "goblin", False)],
+        )
+        self.assertEqual(len(ds["dfs_ev_rows"]), 1)
+        standard = ds["dfs_ev_rows"][0]
+        self.assertIsNone(standard["leg_american"])
+        self.assertIsNone(standard["leg_decimal"])
+        self.assertIsNone(standard["dfs_ev_pct"])
+        self.assertTrue(standard["no_single_leg_odds"])
+        self.assertEqual(standard["ev_method"], "Entry payout table; single-leg EV unavailable")
+
+        self.assertEqual(len(ds["goblin_rows"]), 1)
+        goblin = ds["goblin_rows"][0]
+        self.assertTrue(goblin["is_goblin"])
+        self.assertTrue(goblin["adjusted_payout"])
+        self.assertFalse(goblin["is_promo"])
+        self.assertIsNone(goblin["leg_american"])
+        self.assertIsNone(goblin["leg_decimal"])
+        self.assertIsNone(goblin["dfs_ev_pct"])
 
 
 class TestPinnacleTDNormalization(unittest.TestCase):
@@ -363,3 +450,96 @@ class TestCoversFullNameFromSlug(unittest.TestCase):
         r = rows[0]
         self.assertEqual(r["player"], "Jared Goff")
         self.assertEqual(r["matchup"], "NE @ DET")
+
+
+class TestFairProbTier(unittest.TestCase):
+    """_tier_from_label classifies the devig/fair-prob source for machine-readable logging."""
+
+    def test_tier_classification(self):
+        from src.engine import _tier_from_label
+        cases = {
+            "Pinnacle No-Vig": "sharp",
+            "Sharp Consensus (2: Pinnacle, Novig)": "sharp",
+            "Sharp Exchange (Novig, Kalshi)": "sharp",
+            "Market Consensus (4 books)": "market",
+            "Line-Shifted Sharp": "sharp",
+            "Line-Shifted Consensus": "market",
+            "BettingPros Fair Prob": "model",
+            "Entry payout table; single-leg EV unavailable": "",
+            "": "",
+        }
+        for label, expected in cases.items():
+            self.assertEqual(_tier_from_label(label), expected, label)
+
+
+class TestBetLogTemplateClean(unittest.TestCase):
+    """BUG 16: Bet Log must not ship a stray hardcoded 'Pending' in only row 2."""
+
+    def test_no_stray_pending_in_template(self):
+        import re
+        with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                               "src", "sheets_export.py"), encoding="utf-8") as fh:
+            src = fh.read()
+        self.assertNotIn('"Pending" if rnum == 2 else ""', src,
+                         "stray row-2-only 'Pending' default should be removed")
+
+
+class TestValidatorIgnoresTierString(unittest.TestCase):
+    """fair_prob_tier is a string field; validator must not treat it as a phantom EV."""
+
+    def test_validator_passes_row_with_tier_and_no_ev_issue(self):
+        import sys
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tools"))
+        import validate_dataset as vd
+        ds = {
+            "prop_ev_rows": [{
+                "player": "X", "market": "Y", "pick": "Over",
+                "matchup": "A @ B",
+                "fair_prob": 55.0, "best_decimal": 2.00,
+                "true_ev_pct": round((0.55 * 2.0 - 1) * 100, 2),  # exactly 10.00
+                "fair_prob_tier": "sharp",                     # string field
+            }],
+            "game_ev_rows": [], "alc_scanner_rows": [], "dfs_ev_rows": [],
+            "slate_games": [{"matchup": "A @ B"}],
+        }
+        # Should pass: EV recomputes and fair_prob is present; tier string is irrelevant.
+        self.assertEqual(vd.validate_dataset(ds), 0)
+
+
+class TestValidatorLongshotVsPhantom(unittest.TestCase):
+    """The >30% EV check must accept legit longshot mispricing but still catch phantoms."""
+
+    def _rc(self, row):
+        import sys
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tools"))
+        import validate_dataset as vd
+        row.setdefault("matchup", "A @ B")
+        ds = {"prop_ev_rows": [row], "game_ev_rows": [], "alc_scanner_rows": [],
+              "dfs_ev_rows": [], "slate_games": [{"matchup": "A @ B"}]}
+        return vd.validate_dataset(ds)
+
+    def test_legit_longshot_passes(self):
+        # +1750 soft price vs sharp fair 7.89% (fair +1167) => genuine ~46% EV.
+        rc = self._rc({"player": "Luepke", "market": "Anytime TD", "pick": "Yes",
+                       "fair_prob": 7.89, "best_decimal": 18.5, "true_ev_pct": 46.04,
+                       "fair_prob_tier": "sharp"})
+        self.assertEqual(rc, 0)
+
+    def test_phantom_high_ev_no_fair_prob_fails(self):
+        rc = self._rc({"player": "P", "market": "Rec Yds", "pick": "Over",
+                       "fair_prob": None, "best_decimal": 1.9, "true_ev_pct": 40.0,
+                       "fair_prob_tier": ""})
+        self.assertEqual(rc, 1)
+
+    def test_high_ev_non_longshot_fails(self):
+        # Sharp tier but short odds (dec 2.0) is not a longshot -> suspicious.
+        rc = self._rc({"player": "P", "market": "Rec Yds", "pick": "Over",
+                       "fair_prob": 52.0, "best_decimal": 2.0, "true_ev_pct": 40.0,
+                       "fair_prob_tier": "sharp"})
+        self.assertEqual(rc, 1)
+
+    def test_longshot_with_wrong_math_still_fails(self):
+        rc = self._rc({"player": "Luepke", "market": "Anytime TD", "pick": "Yes",
+                       "fair_prob": 7.89, "best_decimal": 18.5, "true_ev_pct": 99.0,
+                       "fair_prob_tier": "sharp"})
+        self.assertEqual(rc, 1)

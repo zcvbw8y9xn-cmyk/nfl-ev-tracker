@@ -213,13 +213,12 @@ Verification: live parse now yields 0 initial-style names and matchup on all 49 
   Goff / Aaron Rodgers rows now carry Covers-sourced bet365/BET99 odds). Validator +
   23 tests pass.
 
-BUG 16 [COSMETIC - NOT FIXED] - Bet Log pre-filled "Pending" only in row 2
-File: src/sheets_export.py (line ~312)
+BUG 16 [FIXED] - Bet Log pre-filled "Pending" only in row 2
+File: src/sheets_export.py
 Old:  "Pending" if rnum == 2 else ""
-Note: intentional-looking but only row 2 gets the default. Left as-is because
-      data-validation on the Result column (Pending,Win,Loss,Push,Cashout) already
-      constrains input; Net P/L correctly blanks for non Win/Loss/Push so dashboard
-      SUM is unaffected. (Optional cleanup, not a correctness bug.)
+Fix:  removed the stray row-2-only default so the Bet Log template starts blank.
+      The Result-column data-validation (Pending,Win,Loss,Push,Cashout) still
+      constrains input. Regression test: TestBetLogTemplateClean.
 
 ========================================================================
 FALSE POSITIVES INVESTIGATED & CLEARED
@@ -371,3 +370,26 @@ REQUIREMENTS FIX (found by CI on first run)
  - Repo published (private) with .env excluded via .gitignore; .env.example committed.
  All verified: fault-injected phantom-EV and orphan-market both return exit 1 /
  block the commit; clean data passes. Tested on macOS bash 3.2 (mapfile removed).
+
+
+
+ADDITIONAL FIXES (follow-up round)
+----------------------------------
+- DEVIG-TIER LOGGING: added structured `fair_prob_tier` ("sharp"/"market"/"model"/"")
+  to every prop and DFS row via new `_tier_from_label()` in engine.py, derived from
+  ev_method. Makes the sharp-vs-market consensus tier machine-readable for debugging.
+  Live check: prop rows sharp=1412 / market=1594; DFS sharp=2252 / market=1268 /
+  none=2943. Regression test: TestFairProbTier, TestValidatorIgnoresTierString.
+
+- main.py CRASH FIX: printing the Top-5 summary raised
+  "TypeError: unsupported format string passed to NoneType.__format__" whenever a
+  row's american odds was None (leg_american / best_american / alc_american). This
+  killed the whole run before validation. Now rendered as "N/A" when None.
+
+- VALIDATOR REFINED (>30% EV check): the blunt "any prop EV>30% = phantom" rule
+  false-flagged a REAL edge. Live example: Hunter Luepke Anytime-TD Yes, BET99 +1750
+  vs Novig sharp fair 7.89% (+1167) => genuine ~46% EV, recomputes exactly. The check
+  now accepts only "legitimate longshot mispricing" (decimal>=6.0, fair_prob<=25%,
+  sharp tier) and still FAILS on: phantom EV with no fair_prob, high EV on non-longshot
+  short odds, and any EV that does not recompute. Proved with 4 injected cases.
+  Regression tests: TestValidatorLongshotVsPhantom.

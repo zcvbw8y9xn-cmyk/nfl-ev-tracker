@@ -132,6 +132,28 @@ def _shift_prop_prob(ref_prob: float, ref_line: float, target_line: float, side:
     return min(max(_norm_cdf(z_new), 0.05), 0.95)
 
 
+def _tier_from_label(ev_method: str) -> str:
+    """Classify the devig/fair-prob source tier from the human-readable ev_method label.
+
+    Returns one of:
+      "sharp"       - derived from sharp books (Pinnacle / sharp exchanges)
+      "market"      - derived from a soft-book market consensus
+      "model"       - derived from a projection model (BettingPros fair prob, etc.)
+      ""            - unknown / unavailable (no genuine fair probability)
+    This makes the consensus tier machine-readable for debugging & logging.
+    """
+    m = (ev_method or "").lower()
+    if not m:
+        return ""
+    if m.startswith("sharp") or "pinnacle no-vig" in m or "line-shifted sharp" in m:
+        return "sharp"
+    if m.startswith("market consensus") or "line-shifted consensus" in m:
+        return "market"
+    if "bettingpros" in m or "fair prob" in m:
+        return "model"
+    return ""
+
+
 def _weighted_consensus(book_probs: Dict[str, float]) -> Tuple[Optional[float], List[str], List[str]]:
     """Compute weighted sharp-first or broad market fair prob from `{book: devigged_prob}`."""
     if not book_probs:
@@ -765,7 +787,7 @@ def build_ev_datasets(
         pkey = _resolve_pkey(dr.get("player", ""), dr.get("matchup", ""))
         mkt = dr.get("market", "")
         bk_name = dr.get("book", "")
-        if pkey and mkt and bk_name in DFS_BOOKS and dr.get("line") is not None:
+        if pkey and mkt and bk_name in DFS_BOOKS and dr.get("line") is not None and not dr.get("is_goblin") and dr.get("odds_type") != "goblin":
             # Prefer promo/active lowest-or-first standard line for quick reference
             if bk_name not in dfs_line_lookup[(pkey, mkt)] or dr.get("is_promo"):
                 dfs_line_lookup[(pkey, mkt)][bk_name] = float(dr["line"])
@@ -846,6 +868,7 @@ def build_ev_datasets(
                 "true_ev_pct": round(true_ev, 2) if true_ev is not None else None,
                 "model_ev_pct": model_ev_avg,
                 "ev_method": ev_method,
+                "fair_prob_tier": _tier_from_label(ev_method),
                 "books": {b: bk["books"][b]["american"] if b in bk["books"] else None for b in NL_BOOKS},
                 "dfs_lines": {b: dfs_ref.get(b) for b in DFS_BOOKS},
                 "cons_proj": cons_proj,
@@ -1239,9 +1262,14 @@ def build_ev_datasets(
                     fair_am = prob_to_american(fair_prob)
                     ev_method = f"Line-Shifted {'Sharp' if main_ref[3] else 'Consensus'}"
 
-        leg_dec = float(dr["decimal"])
-        if fair_prob is not None:
+        # PrizePicks pays on the full entry, not on an individual leg. Never invent
+        # a conventional single-leg price/EV, including for legacy cached rows.
+        no_single_leg_odds = bool(dr.get("no_single_leg_odds") or book == "PrizePicks")
+        leg_dec = float(dr["decimal"]) if dr.get("decimal") is not None and not no_single_leg_odds else None
+        if fair_prob is not None and leg_dec is not None:
             dfs_ev_pct = round(compute_ev_pct(fair_prob, leg_dec), 2)
+        if no_single_leg_odds:
+            ev_method = "Entry payout table; single-leg EV unavailable"
 
         # Compute line cushion vs Pinnacle (preferred), BettingPros consensus, or Fantasy projection
         bench_line = pin_line if pin_line is not None else mkt_cons_line
@@ -1288,10 +1316,14 @@ def build_ev_datasets(
             "pick": _format_pick_label(mkt, side, exact_line),
             "side": side,
             "line": exact_line,
-            "leg_american": int(dr["american"]),
-            "leg_decimal": round(leg_dec, 3),
-            "is_promo": bool(dr.get("is_promo")),
-            "promo_label": dr.get("promo_label", ""),
+            "leg_american": int(dr["american"]) if dr.get("american") is not None and not no_single_leg_odds else None,
+            "leg_decimal": round(leg_dec, 3) if leg_dec is not None else None,
+            "odds_type": dr.get("odds_type") or ("goblin" if dr.get("is_goblin") else "standard"),
+            "is_goblin": bool(dr.get("is_goblin") or dr.get("odds_type") == "goblin"),
+            "adjusted_payout": bool(dr.get("adjusted_payout")),
+            "no_single_leg_odds": no_single_leg_odds,
+            "is_promo": bool(dr.get("is_promo")) and not bool(dr.get("is_goblin") or dr.get("odds_type") == "goblin"),
+            "promo_label": "" if dr.get("is_goblin") or dr.get("odds_type") == "goblin" else dr.get("promo_label", ""),
             "orig_line": dr.get("orig_line"),
             "pin_line": pin_line,
             "pin_american": pin_am,
@@ -1299,6 +1331,7 @@ def build_ev_datasets(
             "fair_prob": round(fair_prob * 100, 2) if fair_prob else None,
             "dfs_ev_pct": dfs_ev_pct,
             "ev_method": ev_method,
+            "fair_prob_tier": _tier_from_label(ev_method),
             "mkt_cons_line": mkt_cons_line,
             "line_diff": line_diff,
             "cushion": cushion,
@@ -1313,7 +1346,9 @@ def build_ev_datasets(
             "season_hit_pct": bp_ref.get("season_hit_pct") if bp_ref else None,
         }
 
-    dfs_ev_rows = list(dfs_dedup.values())
+    all_dfs_output = list(dfs_dedup.values())
+    dfs_ev_rows = [r for r in all_dfs_output if not r.get("is_goblin")]
+    goblin_rows = [r for r in all_dfs_output if r.get("is_goblin")]
 
     def _dfs_sort_key(r: Dict):
         if r.get("is_promo"):
@@ -1329,6 +1364,13 @@ def build_ev_datasets(
         return (4, -_sort_num(cush, -999.0), 0)
 
     dfs_ev_rows.sort(key=_dfs_sort_key)
+    goblin_rows.sort(
+        key=lambda r: (
+            -(r.get("fair_prob") if r.get("fair_prob") is not None else -1),
+            -(r.get("cushion") if r.get("cushion") is not None else -999),
+            -(r.get("l5_hit_pct") if r.get("l5_hit_pct") is not None else -1),
+        )
+    )
 
     # ------------------------------------------------------------------
     # 4. ALC PRO•LINE FANTASY GROUPS (0-PPR Football Model + Live Groups)
@@ -1402,5 +1444,6 @@ def build_ev_datasets(
         "game_ev_rows": game_ev_rows,
         "alc_scanner_rows": alc_scanner_rows,
         "dfs_ev_rows": dfs_ev_rows,
+        "goblin_rows": goblin_rows,
         "alc_fantasy_groups": alc_fantasy_groups,
     }
