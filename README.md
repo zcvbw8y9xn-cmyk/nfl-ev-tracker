@@ -12,7 +12,7 @@ Automated multi-source NFL +EV scraper and Google Sheets exporter built for **Ne
 
 ## DFS Pick'em Platforms Tracked
 - **Sleeper** (Sleeper Picks lines/odds + official weekly NFL player projections)
-- **PrizePicks** (Standard Pick'em lines + live Taco / flash-sale promos)
+- **PrizePicks** (Standard Pick'em lines, live Taco / flash-sale promos, and Goblin alt lines; no fabricated single-leg odds/EV)
 - **Underdog Fantasy** (Higher/Lower lines + exact leg prices & multipliers)
 
 ## Data Sources

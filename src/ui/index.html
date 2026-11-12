@@ -1086,6 +1086,7 @@
       <button class="tab active" data-tab="dfs">DFS Pick'em <span class="tab-count" id="cntDfs">0</span></button>
       <button class="tab" data-tab="platform">By Platform <span class="tab-count" id="cntPlatform">0</span></button>
       <button class="tab" data-tab="promos">Promos <span class="tab-count" id="cntPromos">0</span></button>
+      <button class="tab" data-tab="goblins">Goblins <span class="tab-count" id="cntGoblins">0</span></button>
       <button class="tab" data-tab="fantasy">Fantasy <span class="tab-count" id="cntFantasy">0</span></button>
       <button class="tab" data-tab="props">+EV Player Props <span class="tab-count" id="cntProps">0</span></button>
       <button class="tab" data-tab="games">+EV Game Lines <span class="tab-count" id="cntGames">0</span></button>
@@ -1597,7 +1598,7 @@ function populateBookFilter() {
   const sel = document.getElementById("filterBook");
   const cur = state.tab === "platform" ? (state.platformSelected === "All" ? "" : state.platformSelected) : state.book;
   let opts = [];
-  if (state.tab === "dfs") {
+  if (state.tab === "dfs" || state.tab === "goblins") {
     opts = DFS_BOOKS;
   } else if (state.tab === "platform") {
     opts = [...NL_BOOKS, ...DFS_BOOKS];
@@ -1645,6 +1646,7 @@ function getFilteredRows() {
   if (state.tab === "dfs") rows = ds.dfs_ev_rows || [];
   else if (state.tab === "platform") rows = computePlatformRows();
   else if (state.tab === "promos") rows = computePromoRows();
+  else if (state.tab === "goblins") rows = ds.goblin_rows || [];
   else if (state.tab === "fantasy") rows = getFantasyRows();
   else if (state.tab === "props") rows = ds.prop_ev_rows || [];
   else if (state.tab === "games") rows = ds.game_ev_rows || [];
@@ -1654,7 +1656,7 @@ function getFilteredRows() {
   return rows.filter((r) => {
     if (m && r.matchup !== m) return false;
     if (b) {
-      if ((state.tab === "dfs" || state.tab === "promos" || state.tab === "fantasy") && r.book !== b) return false;
+      if ((state.tab === "dfs" || state.tab === "promos" || state.tab === "goblins" || state.tab === "fantasy") && r.book !== b) return false;
       if (state.tab === "props" || state.tab === "games") {
         if (state.bestBookOnly) {
           if (r.best_book !== b) return false;
@@ -1670,12 +1672,13 @@ function getFilteredRows() {
     if (state.promoOnly && (state.tab === "dfs" || state.tab === "promos" || state.tab === "platform") && !r.is_promo) return false;
     if (state.posEvOnly) {
       if ((state.tab === "dfs" || state.tab === "fantasy") && !(r.dfs_ev_pct > 0 || r.is_promo)) return false;
+      if (state.tab === "goblins" && !((r.fair_prob != null && r.fair_prob >= 60) || r.cushion > 0)) return false;
       if (state.tab === "platform" && !(r.plat_ev > 0 || r.is_promo)) return false;
       if (state.tab === "props" && !(r.true_ev_pct > 0 || r.model_ev_pct > 0)) return false;
       if (state.tab === "games" && !(r.ev_pct > 0)) return false;
       if (state.tab === "alc" && !(r.alc_ev_pct > 0)) return false;
     }
-    if (state.cushionOnly && (state.tab === "dfs" || state.tab === "fantasy" || state.tab === "platform") && !(r.cushion > 0)) return false;
+    if (state.cushionOnly && (state.tab === "dfs" || state.tab === "goblins" || state.tab === "fantasy" || state.tab === "platform") && !(r.cushion > 0)) return false;
     if (q) {
       const hay = `${r.player || ""} ${r.matchup || ""} ${r.market || ""} ${r.pick || ""} ${r.book || ""} ${r.best_book || ""} ${r.plat_kind || ""} ${r.venue || ""} ${r.weather || ""}`.toLowerCase();
       if (!hay.includes(q)) return false;
@@ -1741,6 +1744,7 @@ function updateKPIs() {
   document.getElementById("cntDfs").textContent = String(dfs.length);
   document.getElementById("cntPlatform").textContent = String(props.length + games.length + dfs.length);
   document.getElementById("cntPromos").textContent = String(computePromoRows().length);
+  document.getElementById("cntGoblins").textContent = String((ds.goblin_rows || []).length);
   const fantasyCnt = dfs.filter((r) => r.book === "Sleeper" && r.market === "Fantasy Points").length + (ds.alc_fantasy_groups || []).length;
   document.getElementById("cntFantasy").textContent = String(fantasyCnt);
   document.getElementById("cntProps").textContent = String(props.length);
@@ -2377,6 +2381,36 @@ function selectPromoAccount(platform) {
   render();
 }
 
+function renderGoblinsTab(wrap, rows, totalCount) {
+  const highProb = rows.filter((r) => (r.fair_prob ?? 0) >= 65).length;
+  const intro = `<div style="padding:11px 14px;border-bottom:1px solid var(--border);color:var(--text-dim);font-size:12px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+    <span><strong style="color:#4ade80;">PrizePicks Goblin alt lines</strong> · Adjusted entry payout; no standalone leg price or EV is assumed. Ranked by fair win probability and line cushion.</span>
+    <span><strong style="color:#fff;">${highProb}</strong> legs at 65%+ fair probability</span>
+  </div>`;
+  if (!rows.length) {
+    wrap.innerHTML = intro + `<div class="empty-state"><h3>No Goblin lines available</h3><p>Try clearing filters or refresh the PrizePicks feed.</p></div>`;
+    return;
+  }
+  let html = intro + `<table><thead><tr>
+    ${th("Platform", "book")}${th("Matchup", "matchup")}${th("Player", "player")}${th("Market / Pick", "pick")}
+    <th>Payout</th>${th("Fair Win %", "fair_prob", true)}${th("Fair Odds", "fair_american", true)}
+    ${th("Cushion", "cushion", true)}${th("Pin / Market Line", "pin_line", true)}${th("Consensus Proj", "cons_proj", true)}
+    ${th("L5 %", "l5_hit_pct", true)}${th("Season %", "season_hit_pct", true)}
+  </tr></thead><tbody>`;
+  rows.forEach((r, idx) => {
+    const benchmark = r.pin_line != null ? `${fmtNum(r.pin_line)} (${fmtAm(r.pin_american)})` : (r.mkt_cons_line != null ? `${fmtNum(r.mkt_cons_line)} market` : "—");
+    const fair = r.fair_prob != null ? `<span class="badge ${r.fair_prob >= 65 ? "badge-ev-high" : r.fair_prob >= 55 ? "badge-ev-mid" : "badge-book"}">${fmtNum(r.fair_prob, 1)}%</span>` : '<span class="dim">—</span>';
+    html += `<tr onclick="selectRow(${idx})"><td>${bookBadge(r.book)}</td><td>${esc(r.matchup || "—")}</td>
+      <td><span class="player-name">${esc(r.player)}</span></td><td><span class="badge badge-cushion">GOBLIN</span> ${esc(r.market)} · ${esc(r.pick)}</td>
+      <td><span class="dim">Adjusted payout</span></td><td class="num">${fair}</td><td class="num">${fmtAm(r.fair_american)}</td>
+      <td class="num">${fmtCushion(r.cushion)}</td><td class="num">${benchmark}</td><td class="num">${fmtNum(r.cons_proj, 2)}</td>
+      <td class="num">${r.l5_hit_pct != null ? `${fmtNum(r.l5_hit_pct, 0)}%` : "—"}</td><td class="num">${r.season_hit_pct != null ? `${fmtNum(r.season_hit_pct, 0)}%` : "—"}</td></tr>`;
+  });
+  html += `</tbody></table>`;
+  if (totalCount > rows.length) html += `<div style="padding:10px 14px;color:var(--text-muted);font-size:12px;">Showing ${rows.length} of ${totalCount} Goblin lines.</div>`;
+  wrap.innerHTML = html;
+}
+
 function renderPromosTab(wrap, rows) {
   const allPromos = computePromoRows();
   const attached = (state.accounts || []).filter((a) => a.attached);
@@ -2839,6 +2873,13 @@ function render() {
     const shown = rows.slice(0, 250);
     window._currentRows = shown;
     renderPromosTab(wrap, shown);
+    return;
+  }
+
+  if (state.tab === "goblins") {
+    const shown = rows.slice(0, 250);
+    window._currentRows = shown;
+    renderGoblinsTab(wrap, shown, rows.length);
     return;
   }
 
