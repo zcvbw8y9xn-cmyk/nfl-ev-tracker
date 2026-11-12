@@ -31,18 +31,21 @@ def main() -> None:
 
     print("\nTop 5 +EV Player Props:")
     for r in dataset["prop_ev_rows"][:5]:
-        print(f"  - {r['player']} | {r['market']} {r['pick']} | Best: {r['best_book']} ({r['best_american']:+d}) | True EV: {r['true_ev_pct']}% | Method: {r['ev_method']}")
+        ba = f"{r['best_american']:+d}" if r.get("best_american") is not None else "N/A"
+        print(f"  - {r['player']} | {r['market']} {r['pick']} | Best: {r['best_book']} ({ba}) | True EV: {r['true_ev_pct']}% | Method: {r['ev_method']}")
 
     print("\nTop 5 DFS Pick'em Plays (Sleeper / PrizePicks / Underdog):")
     for r in dataset["dfs_ev_rows"][:5]:
         tag = f" [{r['promo_label']}]" if r.get("promo_label") else ""
         ev_str = f"{r['dfs_ev_pct']}%" if r.get("dfs_ev_pct") is not None else "N/A"
         cush_str = f"{r['cushion']:+.1f}" if r.get("cushion") is not None else "0.0"
-        print(f"  - [{r['book']}]{tag} {r['player']} | {r['market']} {r['pick']} | Odds: {r['leg_american']:+d} | EV: {ev_str} | Cushion: {cush_str}")
+        leg_am = f"{r['leg_american']:+d}" if r.get("leg_american") is not None else "N/A"
+        print(f"  - [{r['book']}]{tag} {r['player']} | {r['market']} {r['pick']} | Odds: {leg_am} | EV: {ev_str} | Cushion: {cush_str}")
 
     print("\nTop 5 ALC Mispricings / Lowest Vig:")
     for r in dataset["alc_scanner_rows"][:5]:
-        print(f"  - {r['matchup']} {r['player']} | {r['market']} {r['pick']} | ALC: {r['alc_american']:+d} vs Fair: {r['fair_american']} | ALC EV: {r['alc_ev_pct']}%")
+        alc_am = f"{r['alc_american']:+d}" if r.get("alc_american") is not None else "N/A"
+        print(f"  - {r['matchup']} {r['player']} | {r['market']} {r['pick']} | ALC: {alc_am} vs Fair: {r['fair_american']} | ALC EV: {r['alc_ev_pct']}%")
 
     # Automatic dataset integrity check (non-fatal). Catches regressions such as the
     # Covers "DIFFERENCE %" phantom-EV bug or an orphaned market/team that silently
