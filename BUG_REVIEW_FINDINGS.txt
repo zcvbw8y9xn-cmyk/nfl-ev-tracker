@@ -393,3 +393,17 @@ ADDITIONAL FIXES (follow-up round)
   sharp tier) and still FAILS on: phantom EV with no fair_prob, high EV on non-longshot
   short odds, and any EV that does not recompute. Proved with 4 injected cases.
   Regression tests: TestValidatorLongshotVsPhantom.
+
+
+DEV TOOLING & LINT SWEEP
+------------------------
+- requirements-dev.txt added (ruff + coverage); runtime deps stay in requirements.txt.
+  `make install-dev` installs both; `make lint` runs ruff.
+- pyproject.toml: ruff limited to F (pyflakes) + B (bugbear) so `make lint` fails only
+  on likely bugs, not style churn. B905/F841/B007/B008/B904 ignored with reasons.
+- Fixed 4 F601 duplicate dict keys in normalize.py (all were same-value dupes of
+  'Rushing Attempts' / 'Receiving Yards' - dead weight, no behaviour change).
+- Removed 10 dead imports / f-strings (F401/F541, ruff --fix) across src & tests.
+- B023 in pinnacle.py is a false positive (closure used immediately in-iteration);
+  documented with a targeted noqa rather than restructuring working code.
+- `make lint` now passes clean; 35 unit tests still pass; full pipeline+validator pass.

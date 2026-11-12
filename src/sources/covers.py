@@ -8,7 +8,7 @@ from typing import Dict, List, Optional, Set, Tuple
 from bs4 import BeautifulSoup
 from scrapling.fetchers import Fetcher
 
-from ..normalize import NL_BOOKS, normalize_book_name, normalize_market, normalize_team
+from ..normalize import normalize_book_name, normalize_market, normalize_team
 from ..odds_math import american_to_decimal, parse_american
 from .cache_utils import RateLimitError, fetch_with_cache, get_domain_cooldown_remaining, pace_domain
 

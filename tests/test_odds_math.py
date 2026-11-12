@@ -5,7 +5,6 @@ Run with:  python3 -m unittest discover -s tests -v
 """
 from __future__ import annotations
 
-import math
 import os
 import sys
 import unittest
@@ -396,7 +395,6 @@ class TestMarketAndTeamNormalization(unittest.TestCase):
     BUG 13: ALC collapsed team names ('LOS ANGELESC'/'LOS ANGELESR'/'SANFRANCISCO')."""
 
     def test_abbreviated_markets(self):
-        from src.normalize import normalize_market
         for raw, want in [
             ("Rec Yds", "Receiving Yards"),
             ("Rec Yards", "Receiving Yards"),
@@ -476,7 +474,6 @@ class TestBetLogTemplateClean(unittest.TestCase):
     """BUG 16: Bet Log must not ship a stray hardcoded 'Pending' in only row 2."""
 
     def test_no_stray_pending_in_template(self):
-        import re
         with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                                "src", "sheets_export.py"), encoding="utf-8") as fh:
             src = fh.read()

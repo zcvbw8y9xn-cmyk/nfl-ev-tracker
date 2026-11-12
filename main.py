@@ -72,7 +72,7 @@ def main() -> None:
         optional_status=optional_status,
         spreadsheet_id=args.spreadsheet_id.strip() or None,
     )
-    print(f"SUCCESS! Google Sheet created/updated:")
+    print("SUCCESS! Google Sheet created/updated:")
     print(f"  Title: {res['title']}")
     print(f"  ID:    {res['spreadsheet_id']}")
     print(f"  URL:   {res['url']}")

@@ -7,7 +7,6 @@ import json
 import os
 from pathlib import Path
 import signal
-import sys
 import threading
 from typing import Any, Dict, Optional
 

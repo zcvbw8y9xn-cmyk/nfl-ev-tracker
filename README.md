@@ -60,6 +60,9 @@ make validate   # integrity check only
 make test       # unit tests
 make check      # compile + tests + integrity (CI gate)
 make check-ci   # same, but skips integrity when no cached dataset exists
+make install    # install runtime deps
+make install-dev  # install runtime + dev tooling (ruff, coverage)
+make lint       # ruff correctness lint (F + B rules)
 ```
 
 ### CI (GitHub Actions)
