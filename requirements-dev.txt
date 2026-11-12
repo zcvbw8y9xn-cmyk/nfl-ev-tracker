@@ -1,0 +1,12 @@
+# Development-only tooling. Install with:
+#   pip install -r requirements.txt -r requirements-dev.txt
+#
+# Runtime dependencies live in requirements.txt. Nothing here is needed to run
+# the tracker — the unit tests use only the standard library `unittest`, so no
+# test framework is required.
+
+# Linting / formatting (code carries ruff codes such as BLE001, WPS433, E402)
+ruff>=0.6.0
+
+# Optional: coverage reporting for the test suite
+coverage>=7.6.0

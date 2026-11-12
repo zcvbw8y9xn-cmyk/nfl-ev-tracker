@@ -8,7 +8,6 @@ from typing import Dict, List
 from scrapling.fetchers import Fetcher
 
 from ..normalize import normalize_market, normalize_team
-from ..odds_math import american_to_decimal
 from .cache_utils import RateLimitError, fetch_with_cache, get_domain_cooldown_remaining, pace_domain
 
 

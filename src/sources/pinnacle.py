@@ -163,7 +163,7 @@ def _scrape_pinnacle_live() -> Dict[str, List[Dict]]:
                         des = (price.get("designation") or "").lower()
                         if des in labels:
                             return True
-                        pname = pparts_map.get(price.get("participantId"))
+                        pname = pparts_map.get(price.get("participantId"))  # noqa: B023 - used immediately
                         return bool(pname) and pname in labels
 
                     p_o = next(

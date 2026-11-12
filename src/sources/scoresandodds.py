@@ -6,7 +6,7 @@ from typing import Dict, List
 from bs4 import BeautifulSoup
 from scrapling.fetchers import Fetcher
 
-from ..normalize import normalize_market, normalize_team
+from ..normalize import normalize_market
 from ..odds_math import parse_american
 from .cache_utils import RateLimitError, fetch_with_cache
 

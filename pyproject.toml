@@ -1,0 +1,19 @@
+[tool.ruff]
+# Only lint for real correctness concerns, not style churn.
+# Style rules (UP006/UP045 modernisation, import sorting, etc.) are intentionally
+# excluded so `make lint` stays actionable — it fails only on likely bugs.
+target-version = "py311"
+line-length = 120
+
+[tool.ruff.lint]
+# F = pyflakes (undefined names, unused imports, repeated dict keys, redefinitions)
+# B = flake8-bugbear (loop-variable closures, mutable defaults, etc.)
+select = ["F", "B"]
+# Keep intentional patterns that are fine in this codebase:
+ignore = [
+    "B008",    # function call in default arg (used deliberately)
+    "B904",    # raise-without-from inside except
+    "B007",    # unused loop control variable
+    "B905",    # zip() without strict= (inputs are known-shape, not worth churn)
+    "F841",    # unused local (a few benign leftovers in scrapers)
+]

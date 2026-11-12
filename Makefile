@@ -1,6 +1,6 @@
 PY ?= python3
 
-.PHONY: run export validate test check check-ci hooks
+.PHONY: run export validate test check check-ci hooks install install-dev lint
 
 # Dry-run the pipeline (no Google Sheet write), then validate the dataset.
 run:
@@ -35,3 +35,15 @@ check-ci:
 # Activate tracked git hooks (pre-commit integrity check).
 hooks:
 	bash tools/install-hooks.sh
+
+# Install runtime dependencies.
+install:
+	$(PY) -m pip install -r requirements.txt
+
+# Install runtime + development tooling (ruff, coverage).
+install-dev:
+	$(PY) -m pip install -r requirements.txt -r requirements-dev.txt
+
+# Lint the codebase with ruff (install-dev required).
+lint:
+	$(PY) -m ruff check src tools tests main.py

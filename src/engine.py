@@ -10,15 +10,12 @@ from .normalize import (
     DFS_BOOKS,
     NL_BOOKS,
     SHARP_BENCHMARK_BOOKS,
-    normalize_market,
     normalize_player_name,
     player_match_key,
 )
 from .odds_math import (
     american_to_decimal,
-    american_to_implied_prob,
     compute_ev_pct,
-    decimal_to_american,
     devig_power,
     market_vig_pct,
     prob_to_american,

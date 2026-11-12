@@ -28,7 +28,6 @@ import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.normalize import normalize_market  # noqa: E402
 from src.sources.pinnacle import _extract_player_and_market  # noqa: E402
 from src.odds_math import american_to_decimal, devig_power, market_vig_pct, prob_to_american  # noqa: E402
 
